@@ -34,7 +34,7 @@ from unmute.llm.llm_utils import (
     get_openai_client,
     rechunk_to_words,
 )
-from unmute.mcp.mcp_manager import MCPManager
+from unmute.mcp.mcp_manager_simple import MCPManager
 from unmute.quest_manager import Quest, QuestManager
 from unmute.recorder import Recorder
 from unmute.service_discovery import find_instance

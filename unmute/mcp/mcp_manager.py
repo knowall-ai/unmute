@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 from dataclasses import dataclass, field
 import aiohttp
-from mcp import Client, StdioServerParameters, SSEServerParameters
-from mcp.types import Tool, TextContent, CallToolResult
+from mcp import ClientSession, StdioServerParameters, stdio_client, Tool
+from mcp.types import TextContent
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class MCPManager:
         """
         self.config_path = config_path or Path.cwd() / ".mcp.json"
         self.servers: Dict[str, MCPServerConfig] = {}
-        self.clients: Dict[str, Client] = {}
+        self.clients: Dict[str, ClientSession] = {}
         self.available_tools: Dict[str, Tool] = {}
         self._running = False
         
@@ -131,7 +131,7 @@ class MCPManager:
             except Exception as e:
                 logger.error(f"Failed to start MCP server '{name}': {e}")
                 
-    async def _start_server(self, config: MCPServerConfig) -> Client:
+    async def _start_server(self, config: MCPServerConfig) -> ClientSession:
         """Start a single MCP server based on its configuration."""
         if config.transport == "stdio":
             # Create stdio server parameters
@@ -140,24 +140,19 @@ class MCPManager:
                 args=config.args,
                 env={**os.environ, **config.env}  # Merge with current env
             )
-            # Create and initialize client
-            async with Client(name=config.name, version="1.0") as client:
-                await client.connect(server_params)
-                return client
+            # Start the stdio client
+            read_stream, write_stream = await stdio_client(server_params).__aenter__()
+            session = ClientSession(read_stream, write_stream)
+            
+            # Initialize the session
+            init_result = await session.initialize()
+            logger.info(f"Initialized MCP server '{config.name}': {init_result}")
+            
+            return session
                 
         elif config.transport == "sse":
-            # Create SSE server parameters
-            if not config.url:
-                raise ValueError(f"SSE transport requires 'url' for server '{config.name}'")
-                
-            server_params = SSEServerParameters(
-                url=config.url,
-                headers=config.headers or {}
-            )
-            # Create and initialize client
-            async with Client(name=config.name, version="1.0") as client:
-                await client.connect(server_params)
-                return client
+            # SSE transport would use HTTP/SSE for communication
+            raise NotImplementedError(f"SSE transport not implemented yet for server '{config.name}'")
                 
         else:
             raise ValueError(f"Unknown transport type '{config.transport}' for server '{config.name}'")

@@ -10,10 +10,14 @@ import json
 import sys
 from typing import Any
 
-from mcp.server.models import InitializationOptions
-from mcp.server.stdio import stdio_server
-from mcp.tools import Tool
-from pydantic import AnyUrl
+# MCP imports are optional for standalone functionality
+HAS_MCP = False
+try:
+    from mcp import ServerSession, Tool, stdio_server
+    from mcp.server import Server
+    HAS_MCP = True
+except ImportError:
+    pass
 
 # Try different timezone libraries
 try:
