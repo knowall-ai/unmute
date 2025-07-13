@@ -34,6 +34,7 @@ from unmute.llm.llm_utils import (
     get_openai_client,
     rechunk_to_words,
 )
+from unmute.mcp.mcp_manager import MCPManager
 from unmute.quest_manager import Quest, QuestManager
 from unmute.recorder import Recorder
 from unmute.service_discovery import find_instance
@@ -100,6 +101,7 @@ class UnmuteHandler(AsyncStreamHandler):
 
         self.chatbot = Chatbot()
         self.openai_client = get_openai_client()
+        self.mcp_manager = MCPManager()
 
         self.turn_transition_lock = asyncio.Lock()
 
@@ -115,10 +117,28 @@ class UnmuteHandler(AsyncStreamHandler):
             self.audio_input_override = AudioInputOverride(AUDIO_INPUT_OVERRIDE)
         else:
             self.audio_input_override = None
+            
+        # Initialize MCP manager asynchronously when handler starts
+        asyncio.create_task(self._initialize_mcp())
+
+    async def _initialize_mcp(self):
+        """Initialize MCP manager asynchronously."""
+        try:
+            await self.mcp_manager.initialize()
+            logger.info("MCP manager initialized successfully")
+            
+            # Update chatbot with available MCP tools
+            tools_description = self.mcp_manager.get_tools_for_prompt()
+            if tools_description:
+                self.chatbot.update_with_mcp_tools(tools_description)
+                logger.info("Updated chatbot with MCP tools")
+        except Exception as e:
+            logger.error(f"Failed to initialize MCP manager: {e}")
 
     async def cleanup(self):
         if self.recorder is not None:
             await self.recorder.shutdown()
+        await self.mcp_manager.shutdown()
 
     @property
     def stt(self) -> SpeechToText | None:
@@ -220,6 +240,10 @@ class UnmuteHandler(AsyncStreamHandler):
         mt.VLLM_SENT_WORDS.inc(num_words_sent)
         mt.VLLM_REQUEST_LENGTH.observe(num_words_sent)
         mt.VLLM_ACTIVE_SESSIONS.inc()
+        
+        # Buffer to accumulate response for tool call detection
+        response_buffer = ""
+        tool_call_detected = False
 
         try:
             async for delta in rechunk_to_words(llm.chat_completion(messages)):
@@ -229,6 +253,7 @@ class UnmuteHandler(AsyncStreamHandler):
 
                 mt.VLLM_RECV_WORDS.inc()
                 response_words.append(delta)
+                response_buffer += delta
 
                 if time_to_first_token is None:
                     time_to_first_token = llm_stopwatch.time()
@@ -236,18 +261,72 @@ class UnmuteHandler(AsyncStreamHandler):
                     mt.VLLM_TTFT.observe(time_to_first_token)
                     logger.info("Sending first word to TTS: %s", delta)
 
-                self.tts_output_stopwatch.start_if_not_started()
-                try:
-                    tts = await quest.get()
-                except Exception:
-                    error_from_tts = True
-                    raise
+                # Check for tool call pattern
+                if "TOOL_CALL:" in response_buffer and not tool_call_detected:
+                    tool_call_detected = True
+                    # Extract tool call from buffer
+                    import re
+                    tool_call_match = re.search(r'TOOL_CALL:\s*(\w+(?:\.\w+)*)\((.*?)\)', response_buffer)
+                    if tool_call_match:
+                        tool_name = tool_call_match.group(1)
+                        args_str = tool_call_match.group(2)
+                        
+                        # Parse arguments
+                        try:
+                            # Simple argument parsing (can be improved)
+                            args = {}
+                            if args_str:
+                                # Parse key=value pairs
+                                for arg in args_str.split(','):
+                                    if '=' in arg:
+                                        key, value = arg.strip().split('=', 1)
+                                        # Remove quotes if present
+                                        value = value.strip().strip('"\'')
+                                        args[key] = value
+                            
+                            # Execute tool
+                            logger.info(f"Executing MCP tool: {tool_name} with args {args}")
+                            tool_result = await self.mcp_manager.execute_tool(tool_name, args)
+                            
+                            # Replace the tool call in response with the result
+                            response_words = []
+                            response_buffer = response_buffer[:tool_call_match.start()] + tool_result
+                            
+                            # Send the result to TTS
+                            for word in response_buffer.split():
+                                self.tts_output_stopwatch.start_if_not_started()
+                                try:
+                                    tts = await quest.get()
+                                except Exception:
+                                    error_from_tts = True
+                                    raise
 
-                if len(self.chatbot.chat_history) > generating_message_i:
-                    break  # We've been interrupted
+                                if len(self.chatbot.chat_history) > generating_message_i:
+                                    break  # We've been interrupted
 
-                assert isinstance(delta, str)  # make Pyright happy
-                await tts.send(delta)
+                                await tts.send(word + " ")
+                            
+                            # Stop processing further deltas
+                            break
+                            
+                        except Exception as e:
+                            logger.error(f"Failed to execute tool {tool_name}: {e}")
+                            # Continue with normal response
+                            tool_call_detected = False
+
+                if not tool_call_detected:
+                    self.tts_output_stopwatch.start_if_not_started()
+                    try:
+                        tts = await quest.get()
+                    except Exception:
+                        error_from_tts = True
+                        raise
+
+                    if len(self.chatbot.chat_history) > generating_message_i:
+                        break  # We've been interrupted
+
+                    assert isinstance(delta, str)  # make Pyright happy
+                    await tts.send(delta)
 
             await self.output_queue.put(
                 # The words include the whitespace, so no need to add it here

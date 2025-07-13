@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "datetime": {
+      "command": "python",
+      "args": ["-m", "unmute.mcp.servers.datetime"],
+      "env": {}
+    }
+  }
+}

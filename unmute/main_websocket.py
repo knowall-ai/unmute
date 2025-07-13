@@ -467,6 +467,67 @@ async def receive_loop(
             # important to store should be in the other event types.
             message_to_record = None
 
+        # Handle MCP messages
+        elif isinstance(message, ora.MCPServersList):
+            servers = []
+            for name, client in handler.mcp_manager.clients.items():
+                config = handler.mcp_manager.servers.get(name)
+                servers.append(ora.MCPServerInfo(
+                    name=name,
+                    status="connected",
+                    transport=config.transport if config else "unknown",
+                    tools_count=len([t for t in handler.mcp_manager.available_tools if t.startswith(f"{name}.")])
+                ))
+            await emit_queue.put(ora.MCPServersListResponse(servers=servers))
+
+        elif isinstance(message, ora.MCPServersStatus):
+            server = None
+            if message.server_name in handler.mcp_manager.clients:
+                config = handler.mcp_manager.servers.get(message.server_name)
+                server = ora.MCPServerInfo(
+                    name=message.server_name,
+                    status="connected",
+                    transport=config.transport if config else "unknown",
+                    tools_count=len([t for t in handler.mcp_manager.available_tools if t.startswith(f"{message.server_name}.")])
+                )
+            else:
+                server = ora.MCPServerInfo(
+                    name=message.server_name,
+                    status="disconnected",
+                    transport="unknown",
+                    tools_count=0
+                )
+            await emit_queue.put(ora.MCPServersStatusResponse(server=server))
+
+        elif isinstance(message, ora.MCPToolsAvailable):
+            tools = []
+            for tool_desc in handler.mcp_manager.get_available_tools():
+                tools.append(ora.MCPToolInfo(
+                    name=tool_desc["name"],
+                    description=tool_desc["description"],
+                    input_schema=tool_desc["input_schema"]
+                ))
+            await emit_queue.put(ora.MCPToolsAvailableResponse(tools=tools))
+
+        elif isinstance(message, ora.MCPToolExecute):
+            try:
+                result = await handler.mcp_manager.execute_tool(
+                    message.tool_name,
+                    message.arguments
+                )
+                await emit_queue.put(ora.MCPToolExecuteResponse(
+                    tool_name=message.tool_name,
+                    result=result,
+                    success=True
+                ))
+            except Exception as e:
+                await emit_queue.put(ora.MCPToolExecuteResponse(
+                    tool_name=message.tool_name,
+                    result="",
+                    success=False,
+                    error=str(e)
+                ))
+
         else:
             logger.info("Ignoring message:", str(message)[:100])
 

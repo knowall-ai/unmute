@@ -173,6 +173,62 @@ class UnmuteInterruptedByVAD(BaseEvent[Literal["unmute.interrupted_by_vad"]]):
     """The VAD interrupted the response generation."""
 
 
+# MCP (Model Context Protocol) events
+class MCPServerInfo(BaseModel):
+    name: str
+    status: Literal["connected", "disconnected", "error"]
+    transport: str
+    tools_count: int
+
+
+class MCPToolInfo(BaseModel):
+    name: str
+    description: str
+    input_schema: dict[str, Any]
+
+
+class MCPServersList(BaseEvent[Literal["mcp.servers.list"]]):
+    """Request to list configured MCP servers."""
+
+
+class MCPServersListResponse(BaseEvent[Literal["mcp.servers.list.response"]]):
+    """Response with list of configured MCP servers."""
+    servers: list[MCPServerInfo]
+
+
+class MCPServersStatus(BaseEvent[Literal["mcp.servers.status"]]):
+    """Request status of a specific MCP server."""
+    server_name: str
+
+
+class MCPServersStatusResponse(BaseEvent[Literal["mcp.servers.status.response"]]):
+    """Response with status of a specific MCP server."""
+    server: MCPServerInfo
+
+
+class MCPToolsAvailable(BaseEvent[Literal["mcp.tools.available"]]):
+    """Request list of available MCP tools."""
+
+
+class MCPToolsAvailableResponse(BaseEvent[Literal["mcp.tools.available.response"]]):
+    """Response with list of available MCP tools."""
+    tools: list[MCPToolInfo]
+
+
+class MCPToolExecute(BaseEvent[Literal["mcp.tool.execute"]]):
+    """Request to execute an MCP tool."""
+    tool_name: str
+    arguments: dict[str, Any]
+
+
+class MCPToolExecuteResponse(BaseEvent[Literal["mcp.tool.execute.response"]]):
+    """Response from MCP tool execution."""
+    tool_name: str
+    result: str
+    success: bool
+    error: str | None = None
+
+
 # Server events (from OpenAI to client)
 ServerEvent = Union[
     Error,
@@ -189,6 +245,10 @@ ServerEvent = Union[
     UnmuteResponseTextDeltaReady,
     UnmuteResponseAudioDeltaReady,
     UnmuteInterruptedByVAD,
+    MCPServersListResponse,
+    MCPServersStatusResponse,
+    MCPToolsAvailableResponse,
+    MCPToolExecuteResponse,
 ]
 
 # Client events (from client to OpenAI)
@@ -197,6 +257,10 @@ ClientEvent = Union[
     InputAudioBufferAppend,
     # Used internally for recording, we're not expecting the user to send this
     UnmuteInputAudioBufferAppendAnonymized,
+    MCPServersList,
+    MCPServersStatus,
+    MCPToolsAvailable,
+    MCPToolExecute,
 ]
 
 Event = ClientEvent | ServerEvent

@@ -108,6 +108,31 @@ class Chatbot:
 
     def get_instructions(self) -> Instructions | None:
         return self._instructions
+        
+    def update_with_mcp_tools(self, mcp_tools_description: str):
+        """Update the system prompt to include available MCP tools."""
+        if not mcp_tools_description:
+            return
+            
+        current_prompt = self.get_system_prompt()
+        
+        # Add MCP tools section to the prompt
+        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nYou can use these tools by responding with a special format:\nTOOL_CALL: tool_name(arguments)\nFor example: TOOL_CALL: datetime.get_current_time(location=\"Tokyo\")\n\nOnly use tools when specifically asked by the user or when it would be helpful to answer their question."
+        
+        # Check if MCP section already exists and update it
+        if "# AVAILABLE TOOLS (MCP)" in current_prompt:
+            # Replace existing MCP section
+            import re
+            pattern = r"\n\n# AVAILABLE TOOLS \(MCP\).*?(?=\n\n#|\Z)"
+            updated_prompt = re.sub(pattern, mcp_section, current_prompt, flags=re.DOTALL)
+        else:
+            # Add MCP section before the transcription errors section
+            updated_prompt = current_prompt.replace(
+                "\n# TRANSCRIPTION ERRORS",
+                f"{mcp_section}\n\n# TRANSCRIPTION ERRORS"
+            )
+            
+        self._update_system_prompt(updated_prompt)
 
     def last_message(self, role: str) -> str | None:
         valid_messages = [
