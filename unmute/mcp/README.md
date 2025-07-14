@@ -12,7 +12,14 @@ The MCP integration allows Unmute to:
 
 ## Configuration
 
-MCP servers are configured in the `.mcp.json` file in the project root:
+MCP servers are configured using JSON files in the project root:
+
+1. **`.mcp.json`** - Base configuration (committed to git)
+2. **`.mcp.config.local`** - Local overrides (ignored by git)
+
+The local config file allows you to customize settings like timezone without modifying tracked files.
+
+### Base Configuration (.mcp.json)
 
 ```json
 {
@@ -25,6 +32,24 @@ MCP servers are configured in the `.mcp.json` file in the project root:
   }
 }
 ```
+
+### Local Configuration (.mcp.config.local)
+
+Copy `.mcp.config.local.example` to `.mcp.config.local` and customize:
+
+```json
+{
+  "mcpServers": {
+    "datetime": {
+      "env": {
+        "UNMUTE_TIMEZONE": "America/New_York"
+      }
+    }
+  }
+}
+```
+
+Local configuration is merged with base configuration, so you only need to specify the values you want to override.
 
 ## Creating MCP Servers
 

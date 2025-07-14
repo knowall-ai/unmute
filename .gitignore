@@ -24,3 +24,4 @@ certs/
 volumes/
 CLAUDE.md
 .claude/settings.local.json
+.mcp.config.local

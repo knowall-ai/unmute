@@ -39,6 +39,7 @@ class MCPManager:
     def __init__(self, config_path: Optional[str] = None):
         """Initialize the MCP Manager."""
         self.config_path = config_path or Path.cwd() / ".mcp.json"
+        self.local_config_path = Path.cwd() / ".mcp.config.local"
         self.servers: Dict[str, MCPServerConfig] = {}
         self.available_tools: Dict[str, Tool] = {}
         self._running = False
@@ -86,29 +87,44 @@ class MCPManager:
         self.available_tools.clear()
         
     async def load_config(self) -> None:
-        """Load MCP server configuration from .mcp.json file."""
-        if not os.path.exists(self.config_path):
+        """Load MCP server configuration from .mcp.json and optional .mcp.config.local file."""
+        config = {}
+        
+        # Load base configuration
+        if os.path.exists(self.config_path):
+            try:
+                with open(self.config_path, 'r') as f:
+                    config = json.load(f)
+                logger.info(f"Loaded base config from {self.config_path}")
+            except Exception as e:
+                logger.error(f"Failed to load base MCP config: {e}")
+                return
+        else:
             logger.warning(f"MCP config file not found at {self.config_path}")
-            return
             
-        try:
-            with open(self.config_path, 'r') as f:
-                config = json.load(f)
+        # Load local overrides if they exist
+        if os.path.exists(self.local_config_path):
+            try:
+                with open(self.local_config_path, 'r') as f:
+                    local_config = json.load(f)
+                # Deep merge local config into base config
+                self._merge_configs(config, local_config)
+                logger.info(f"Loaded local config from {self.local_config_path}")
+            except Exception as e:
+                logger.warning(f"Failed to load local MCP config: {e}")
                 
-            mcp_servers = config.get('mcpServers', {})
-            for name, server_config in mcp_servers.items():
-                self.servers[name] = MCPServerConfig(
-                    name=name,
-                    command=server_config.get('command', ''),
-                    args=server_config.get('args', []),
-                    env=server_config.get('env', {}),
-                    transport=server_config.get('type', 'stdio')
-                )
-                
-            logger.info(f"Loaded {len(self.servers)} MCP server configurations")
+        # Process merged configuration
+        mcp_servers = config.get('mcpServers', {})
+        for name, server_config in mcp_servers.items():
+            self.servers[name] = MCPServerConfig(
+                name=name,
+                command=server_config.get('command', ''),
+                args=server_config.get('args', []),
+                env=server_config.get('env', {}),
+                transport=server_config.get('type', 'stdio')
+            )
             
-        except Exception as e:
-            logger.error(f"Failed to load MCP config: {e}")
+        logger.info(f"Loaded {len(self.servers)} MCP server configurations")
             
     def get_available_tools(self) -> List[Dict[str, Any]]:
         """Get list of all available tools."""
@@ -123,18 +139,37 @@ class MCPManager:
         
     async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
         """Execute a tool and return the result."""
-        # For demo purposes, import and call the datetime functions directly
-        if tool_name == "datetime.get_current_time":
-            from unmute.mcp.servers.datetime import get_current_time
-            return await get_current_time(arguments.get("location"))
-        elif tool_name == "datetime.get_date":
-            from unmute.mcp.servers.datetime import get_date
-            return await get_date()
-        elif tool_name == "datetime.get_day_of_week":
-            from unmute.mcp.servers.datetime import get_day_of_week
-            return await get_day_of_week()
-        else:
-            raise ValueError(f"Unknown tool: {tool_name}")
+        # Get environment from datetime server config if available
+        datetime_env = {}
+        if 'datetime' in self.servers:
+            datetime_env = self.servers['datetime'].env
+            
+        # Save current environment
+        saved_env = {}
+        for key, value in datetime_env.items():
+            saved_env[key] = os.environ.get(key)
+            os.environ[key] = value
+            
+        try:
+            # For demo purposes, import and call the datetime functions directly
+            if tool_name == "datetime.get_current_time":
+                from unmute.mcp.servers.datetime import get_current_time
+                return await get_current_time(arguments.get("location"))
+            elif tool_name == "datetime.get_date":
+                from unmute.mcp.servers.datetime import get_date
+                return await get_date()
+            elif tool_name == "datetime.get_day_of_week":
+                from unmute.mcp.servers.datetime import get_day_of_week
+                return await get_day_of_week()
+            else:
+                raise ValueError(f"Unknown tool: {tool_name}")
+        finally:
+            # Restore original environment
+            for key, original_value in saved_env.items():
+                if original_value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = original_value
             
     def get_tools_for_prompt(self) -> str:
         """Get a formatted string of available tools for the LLM prompt."""
@@ -146,3 +181,11 @@ class MCPManager:
             tools_desc.append(f"- {tool_name}: {tool.description}")
             
         return '\n'.join(tools_desc)
+        
+    def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> None:
+        """Deep merge override config into base config."""
+        for key, value in override.items():
+            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                self._merge_configs(base[key], value)
+            else:
+                base[key] = value
