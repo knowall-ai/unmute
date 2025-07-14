@@ -8,6 +8,7 @@ import asyncio
 import datetime
 import json
 import sys
+import os
 from typing import Any
 
 # MCP imports are optional for standalone functionality
@@ -42,7 +43,25 @@ async def get_current_time(location: str | None = None) -> str:
     Returns:
         Current time as a string
     """
-    now = datetime.datetime.now()
+    # Get default timezone from environment or config
+    default_timezone = os.environ.get('UNMUTE_TIMEZONE', 'Europe/London')
+    
+    # If no location specified, use default timezone
+    if not location and (HAS_PYTZ or HAS_ZONEINFO):
+        try:
+            if HAS_PYTZ:
+                tz = pytz.timezone(default_timezone)
+                now = datetime.datetime.now(tz)
+            elif HAS_ZONEINFO:
+                tz = zoneinfo.ZoneInfo(default_timezone)
+                now = datetime.datetime.now(tz)
+            else:
+                now = datetime.datetime.now()
+        except Exception:
+            # Fallback to system local time
+            now = datetime.datetime.now()
+    else:
+        now = datetime.datetime.now()
     
     if location:
         # Try to map location to timezone
@@ -65,6 +84,8 @@ async def get_current_time(location: str | None = None) -> str:
             "mst": "America/Denver",
             "gmt": "UTC",
             "utc": "UTC",
+            "bst": "Europe/London",  # British Summer Time
+            "uk": "Europe/London",
         }
         
         # Normalize location name
@@ -95,7 +116,22 @@ async def get_date() -> str:
     Returns:
         Current date as a string
     """
-    today = datetime.date.today()
+    # Get default timezone from environment or config
+    default_timezone = os.environ.get('UNMUTE_TIMEZONE', 'Europe/London')
+    
+    # Try to get date in default timezone
+    try:
+        if HAS_PYTZ:
+            tz = pytz.timezone(default_timezone)
+            today = datetime.datetime.now(tz).date()
+        elif HAS_ZONEINFO:
+            tz = zoneinfo.ZoneInfo(default_timezone)
+            today = datetime.datetime.now(tz).date()
+        else:
+            today = datetime.date.today()
+    except Exception:
+        today = datetime.date.today()
+        
     return f"Today is {today.strftime('%A, %B %d, %Y')}"
 
 
@@ -105,7 +141,22 @@ async def get_day_of_week() -> str:
     Returns:
         Current day of the week
     """
-    today = datetime.date.today()
+    # Get default timezone from environment or config
+    default_timezone = os.environ.get('UNMUTE_TIMEZONE', 'Europe/London')
+    
+    # Try to get day in default timezone
+    try:
+        if HAS_PYTZ:
+            tz = pytz.timezone(default_timezone)
+            today = datetime.datetime.now(tz).date()
+        elif HAS_ZONEINFO:
+            tz = zoneinfo.ZoneInfo(default_timezone)
+            today = datetime.datetime.now(tz).date()
+        else:
+            today = datetime.date.today()
+    except Exception:
+        today = datetime.date.today()
+        
     return f"Today is {today.strftime('%A')}"
 
 
