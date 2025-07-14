@@ -176,9 +176,23 @@ class MCPManager:
         if not self.available_tools:
             return ""
             
-        tools_desc = ["Available MCP Tools:"]
+        tools_desc = []
         for tool_name, tool in self.available_tools.items():
-            tools_desc.append(f"- {tool_name}: {tool.description}")
+            # Build parameter description from schema
+            params = []
+            if tool.inputSchema.get("properties"):
+                for param_name, param_info in tool.inputSchema["properties"].items():
+                    param_desc = param_info.get("description", "")
+                    param_type = param_info.get("type", "string")
+                    required = param_name in tool.inputSchema.get("required", [])
+                    params.append(f"{param_name}: {param_desc}" + (" (required)" if required else " (optional)"))
+            
+            if params:
+                param_str = "\n    Parameters:\n    - " + "\n    - ".join(params)
+            else:
+                param_str = "\n    Parameters: none"
+                
+            tools_desc.append(f"- {tool_name}: {tool.description}{param_str}")
             
         return '\n'.join(tools_desc)
         

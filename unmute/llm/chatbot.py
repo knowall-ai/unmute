@@ -133,7 +133,7 @@ class Chatbot:
         current_prompt = self.get_system_prompt()
         
         # Add MCP tools section to the prompt
-        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nIMPORTANT RULE: You cannot tell time, date, or day directly. When asked about time, date, or day of the week, you MUST respond with TOOL_CALL format.\n\nTo use a tool, respond ONLY with this format:\nTOOL_CALL: tool_name(arguments)\n\nRequired responses:\n- \"What time is it?\" → TOOL_CALL: datetime.get_current_time()\n- \"What time is it in Tokyo?\" → TOOL_CALL: datetime.get_current_time(location=\"Tokyo\")\n- \"What's the date?\" → TOOL_CALL: datetime.get_date()\n- \"What day is it?\" → TOOL_CALL: datetime.get_day_of_week()\n\nNever provide time/date information without using TOOL_CALL."
+        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nTo use any of these tools, respond with:\nTOOL_CALL: tool_name(arguments)\n\nFor example:\n- TOOL_CALL: some_tool()\n- TOOL_CALL: another_tool(param=\"value\")\n\nIMPORTANT: Always use the appropriate tool when asked about information that a tool can provide. The tool descriptions above tell you what each tool does."
         
         # Check if MCP section already exists and update it
         if "# AVAILABLE TOOLS (MCP)" in current_prompt:
