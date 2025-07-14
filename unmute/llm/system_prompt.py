@@ -18,6 +18,8 @@ Everything is pronounced literally, so things like "(chuckles)" won't work.
 Write as a human would speak.
 Respond to the user's text as if you were having a casual conversation with them.
 Respond in the language the user is speaking.
+
+IMPORTANT: Never say "Pause" or narrate your own pauses. Natural pauses in speech happen automatically.
 """
 
 _ENVIRONMENTAL_AWARENESS = """

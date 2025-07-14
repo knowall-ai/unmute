@@ -95,7 +95,23 @@ class Chatbot:
         # Note that make_system_prompt() might not be deterministic, so we run it only
         # once and save the result. We still keep self._instructions because it's used
         # to check whether initial instructions have been set.
-        self._update_system_prompt(instructions.make_system_prompt())
+        new_prompt = instructions.make_system_prompt()
+        
+        # Preserve MCP tools section if it exists
+        current_prompt = self.get_system_prompt()
+        if "# AVAILABLE TOOLS (MCP)" in current_prompt:
+            # Extract MCP section from current prompt
+            import re
+            mcp_match = re.search(r"\n\n# AVAILABLE TOOLS \(MCP\).*?(?=\n\n#|\Z)", current_prompt, re.DOTALL)
+            if mcp_match:
+                mcp_section = mcp_match.group(0)
+                # Add MCP section to new prompt before transcription errors section
+                new_prompt = new_prompt.replace(
+                    "\n# TRANSCRIPTION ERRORS",
+                    f"{mcp_section}\n\n# TRANSCRIPTION ERRORS"
+                )
+        
+        self._update_system_prompt(new_prompt)
         self._instructions = instructions
 
     def _update_system_prompt(self, system_prompt: str):
@@ -117,7 +133,7 @@ class Chatbot:
         current_prompt = self.get_system_prompt()
         
         # Add MCP tools section to the prompt
-        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nYou can use these tools by responding with a special format:\nTOOL_CALL: tool_name(arguments)\nFor example: TOOL_CALL: datetime.get_current_time(location=\"Tokyo\")\n\nOnly use tools when specifically asked by the user or when it would be helpful to answer their question."
+        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nIMPORTANT RULE: You cannot tell time, date, or day directly. When asked about time, date, or day of the week, you MUST respond with TOOL_CALL format.\n\nTo use a tool, respond ONLY with this format:\nTOOL_CALL: tool_name(arguments)\n\nRequired responses:\n- \"What time is it?\" → TOOL_CALL: datetime.get_current_time()\n- \"What time is it in Tokyo?\" → TOOL_CALL: datetime.get_current_time(location=\"Tokyo\")\n- \"What's the date?\" → TOOL_CALL: datetime.get_date()\n- \"What day is it?\" → TOOL_CALL: datetime.get_day_of_week()\n\nNever provide time/date information without using TOOL_CALL."
         
         # Check if MCP section already exists and update it
         if "# AVAILABLE TOOLS (MCP)" in current_prompt:

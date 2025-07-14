@@ -123,6 +123,7 @@ class UnmuteHandler(AsyncStreamHandler):
 
     async def _initialize_mcp(self):
         """Initialize MCP manager asynchronously."""
+        logger.info("Starting MCP manager initialization...")
         try:
             await self.mcp_manager.initialize()
             logger.info("MCP manager initialized successfully")
@@ -132,8 +133,11 @@ class UnmuteHandler(AsyncStreamHandler):
             if tools_description:
                 self.chatbot.update_with_mcp_tools(tools_description)
                 logger.info("Updated chatbot with MCP tools")
+                logger.info(f"Available MCP tools: {', '.join(self.mcp_manager.available_tools.keys())}")
         except Exception as e:
             logger.error(f"Failed to initialize MCP manager: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
 
     async def cleanup(self):
         if self.recorder is not None:
@@ -244,6 +248,8 @@ class UnmuteHandler(AsyncStreamHandler):
         # Buffer to accumulate response for tool call detection
         response_buffer = ""
         tool_call_detected = False
+        buffering_for_tool = False
+        buffered_words = []
 
         try:
             async for delta in rechunk_to_words(llm.chat_completion(messages)):
@@ -253,7 +259,7 @@ class UnmuteHandler(AsyncStreamHandler):
 
                 mt.VLLM_RECV_WORDS.inc()
                 response_words.append(delta)
-                response_buffer += delta
+                response_buffer += delta + " "
 
                 if time_to_first_token is None:
                     time_to_first_token = llm_stopwatch.time()
@@ -261,13 +267,20 @@ class UnmuteHandler(AsyncStreamHandler):
                     mt.VLLM_TTFT.observe(time_to_first_token)
                     logger.info("Sending first word to TTS: %s", delta)
 
-                # Check for tool call pattern
+                # Check if we should start buffering for tool call
                 if "TOOL_CALL:" in response_buffer and not tool_call_detected:
-                    tool_call_detected = True
-                    # Extract tool call from buffer
+                    buffering_for_tool = True
+                    buffered_words = []
+                
+                # If buffering for tool call, store words instead of sending to TTS
+                if buffering_for_tool:
+                    buffered_words.append(delta)
+                    
+                    # Check if we have a complete tool call
                     import re
                     tool_call_match = re.search(r'TOOL_CALL:\s*(\w+(?:\.\w+)*)\((.*?)\)', response_buffer)
-                    if tool_call_match:
+                    if tool_call_match and ")" in response_buffer[tool_call_match.start():]:
+                        tool_call_detected = True
                         tool_name = tool_call_match.group(1)
                         args_str = tool_call_match.group(2)
                         
@@ -287,13 +300,14 @@ class UnmuteHandler(AsyncStreamHandler):
                             # Execute tool
                             logger.info(f"Executing MCP tool: {tool_name} with args {args}")
                             tool_result = await self.mcp_manager.execute_tool(tool_name, args)
+                            logger.info(f"Tool result: {tool_result}")
                             
-                            # Replace the tool call in response with the result
+                            # Clear the response and send only the tool result
                             response_words = []
-                            response_buffer = response_buffer[:tool_call_match.start()] + tool_result
                             
-                            # Send the result to TTS
-                            for word in response_buffer.split():
+                            # Send the tool result to TTS
+                            for word in tool_result.split():
+                                response_words.append(word)
                                 self.tts_output_stopwatch.start_if_not_started()
                                 try:
                                     tts = await quest.get()
@@ -306,15 +320,17 @@ class UnmuteHandler(AsyncStreamHandler):
 
                                 await tts.send(word + " ")
                             
-                            # Stop processing further deltas
+                            # Stop processing further deltas from LLM
                             break
                             
                         except Exception as e:
                             logger.error(f"Failed to execute tool {tool_name}: {e}")
                             # Continue with normal response
                             tool_call_detected = False
-
-                if not tool_call_detected:
+                            buffering_for_tool = False
+                
+                # If not buffering for tool call, send word to TTS normally
+                if not buffering_for_tool and not tool_call_detected:
                     self.tts_output_stopwatch.start_if_not_started()
                     try:
                         tts = await quest.get()
