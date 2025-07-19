@@ -1,9 +1,0 @@
-{
-  "mcpServers": {
-    "datetime": {
-      "env": {
-        "UNMUTE_TIMEZONE": "Europe/London"
-      }
-    }
-  }
-}

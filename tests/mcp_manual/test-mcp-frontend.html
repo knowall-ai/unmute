@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MCP Test Frontend</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        button {
+            font-size: 18px;
+            padding: 10px 20px;
+            margin: 10px;
+        }
+        #status {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+        #messages {
+            margin: 20px 0;
+            padding: 10px;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            height: 300px;
+            overflow-y: auto;
+        }
+        .message {
+            margin: 5px 0;
+            padding: 5px;
+        }
+        .user { color: blue; }
+        .assistant { color: green; }
+        .system { color: gray; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>MCP Backend Test</h1>
+    <div id="status">Status: Not connected</div>
+    
+    <button onclick="connect()">Connect</button>
+    <button onclick="askTime()">Ask Time</button>
+    <button onclick="disconnect()">Disconnect</button>
+    
+    <div id="messages"></div>
+    
+    <script>
+        let ws = null;
+        let isConnected = false;
+        
+        function updateStatus(text) {
+            document.getElementById('status').innerText = `Status: ${text}`;
+        }
+        
+        function addMessage(type, text) {
+            const messages = document.getElementById('messages');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerText = `[${type}] ${text}`;
+            messages.appendChild(div);
+            messages.scrollTop = messages.scrollHeight;
+        }
+        
+        function connect() {
+            if (ws) {
+                ws.close();
+            }
+            
+            updateStatus('Connecting...');
+            ws = new WebSocket('ws://localhost:8001/v1/realtime', ['realtime']);
+            
+            ws.onopen = () => {
+                isConnected = true;
+                updateStatus('Connected');
+                addMessage('system', 'Connected to MCP backend');
+                
+                // Send initial configuration
+                ws.send(JSON.stringify({
+                    type: 'session.update',
+                    session: {
+                        instructions: 'You are a helpful assistant. When asked about time, use the available MCP tools.',
+                        voice: 'alloy'
+                    }
+                }));
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'error') {
+                    addMessage('error', data.error?.message || 'Unknown error');
+                } else if (data.type === 'session.updated') {
+                    addMessage('system', 'Session configured');
+                } else if (data.type === 'response.text.delta') {
+                    addMessage('assistant', data.delta);
+                } else if (data.type === 'conversation.item.input_audio_transcription.delta') {
+                    addMessage('user', data.delta);
+                } else if (data.type === 'unmute.additional_outputs') {
+                    if (data.args?.debug_dict?.tool_call) {
+                        addMessage('system', `Tool call: ${JSON.stringify(data.args.debug_dict.tool_call)}`);
+                    }
+                } else {
+                    console.log('Received:', data);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                addMessage('error', 'WebSocket error');
+                console.error('WebSocket error:', error);
+            };
+            
+            ws.onclose = () => {
+                isConnected = false;
+                updateStatus('Disconnected');
+                addMessage('system', 'Disconnected from backend');
+            };
+        }
+        
+        function askTime() {
+            if (!ws || !isConnected) {
+                alert('Please connect first');
+                return;
+            }
+            
+            addMessage('user', 'What time is it?');
+            
+            // Simulate text input (since we're not using audio)
+            ws.send(JSON.stringify({
+                type: 'conversation.item.create',
+                item: {
+                    type: 'message',
+                    role: 'user',
+                    content: [{
+                        type: 'input_text',
+                        text: 'What time is it?'
+                    }]
+                }
+            }));
+            
+            // Trigger response
+            ws.send(JSON.stringify({
+                type: 'response.create'
+            }));
+        }
+        
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+    </script>
+</body>
+</html>

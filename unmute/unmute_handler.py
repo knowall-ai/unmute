@@ -34,7 +34,7 @@ from unmute.llm.llm_utils import (
     get_openai_client,
     rechunk_to_words,
 )
-from unmute.mcp.mcp_manager_simple import MCPManager
+from unmute.mcp.mcp_manager import MCPManager
 from unmute.quest_manager import Quest, QuestManager
 from unmute.recorder import Recorder
 from unmute.service_discovery import find_instance
@@ -302,11 +302,87 @@ class UnmuteHandler(AsyncStreamHandler):
                             tool_result = await self.mcp_manager.execute_tool(tool_name, args)
                             logger.info(f"Tool result: {tool_result}")
                             
-                            # Clear the response and send only the tool result
+                            # Clear any buffered words since we're replacing the response
                             response_words = []
                             
-                            # Send the tool result to TTS
-                            for word in tool_result.split():
+                            # Create a modified chat history for interpretation
+                            # We'll update the last assistant message to include the tool result
+                            interpretation_history = self.chatbot.chat_history.copy()
+                            
+                            # Find the last user message asking about time
+                            last_user_msg_idx = -1
+                            for i in range(len(interpretation_history) - 1, -1, -1):
+                                if interpretation_history[i]["role"] == "user":
+                                    last_user_msg_idx = i
+                                    break
+                            
+                            # Remove any assistant messages after the last user message
+                            if last_user_msg_idx >= 0:
+                                interpretation_history = interpretation_history[:last_user_msg_idx + 1]
+                            
+                            # Add the tool result as an assistant message to maintain alternating pattern
+                            interpretation_history.append({
+                                "role": "assistant",
+                                "content": f"I just checked the time for you. The current time in London is {tool_result}. Let me tell you that in a more natural way..."
+                            })
+                            
+                            # Add a user prompt to trigger the natural response
+                            interpretation_history.append({
+                                "role": "user",
+                                "content": "Please share the time information you found in a natural, conversational way without technical details."
+                            })
+                            
+                            # Get LLM to interpret the tool result
+                            logger.info("Creating LLM for tool interpretation")
+                            interpretation_llm = VLLMStream(
+                                self.openai_client,
+                                temperature=FURTHER_MESSAGES_TEMPERATURE,
+                            )
+                            logger.info(f"Chat history roles for interpretation: {[msg['role'] for msg in interpretation_history[-5:]]}")
+                            logger.info("Starting interpretation stream")
+                            interpretation_stream = interpretation_llm.chat_completion(
+                                interpretation_history
+                            )
+                            logger.info("Processing interpretation stream")
+                            
+                            async for word in interpretation_stream:
+                                logger.info(f"Got interpretation word: {word}")
+                                response_words.append(word)
+                                self.tts_output_stopwatch.start_if_not_started()
+                                try:
+                                    tts = await quest.get()
+                                except Exception:
+                                    error_from_tts = True
+                                    raise
+
+                                if len(self.chatbot.chat_history) > generating_message_i + 1:
+                                    break  # We've been interrupted
+
+                                await tts.send(word + " ")
+                            
+                            # Add the interpreted response to the actual chat history
+                            if response_words:
+                                interpreted_response = " ".join(response_words)
+                                logger.info(f"Adding interpreted response to chat history: {interpreted_response[:100]}...")
+                                await self.chatbot.add_chat_message_delta(
+                                    interpreted_response, 
+                                    "assistant", 
+                                    generating_message_i
+                                )
+                            
+                            # Stop processing the original stream
+                            break
+                            
+                        except Exception as e:
+                            logger.error(f"Failed to execute tool {tool_name}: {e}")
+                            import traceback
+                            logger.error(f"Traceback: {traceback.format_exc()}")
+                            # Send error message to user via TTS
+                            error_message = f"I'm sorry, I couldn't get that information right now. The tool failed with: {str(e)}"
+                            
+                            # Clear buffered words and send error message
+                            response_words = []
+                            for word in error_message.split():
                                 response_words.append(word)
                                 self.tts_output_stopwatch.start_if_not_started()
                                 try:
@@ -322,12 +398,6 @@ class UnmuteHandler(AsyncStreamHandler):
                             
                             # Stop processing further deltas from LLM
                             break
-                            
-                        except Exception as e:
-                            logger.error(f"Failed to execute tool {tool_name}: {e}")
-                            # Continue with normal response
-                            tool_call_detected = False
-                            buffering_for_tool = False
                 
                 # If not buffering for tool call, send word to TTS normally
                 if not buffering_for_tool and not tool_call_detected:

@@ -58,8 +58,8 @@ This is important because it's a specific wish of the user:
 If the user asks you to be quiet for a specific duration (e.g., "be quiet for 5 minutes", 
 "don't speak for 10 minutes", "silence for an hour"):
 1. Acknowledge their request briefly
-2. Use TOOL_CALL: datetime.get_current_time() to note when the quiet period started
-3. Before speaking again, use TOOL_CALL: datetime.get_current_time() to check if enough time has passed
+2. Use TOOL_CALL: time.get_current_time() to note when the quiet period started
+3. Before speaking again, use TOOL_CALL: time.get_current_time() to check if enough time has passed
 4. Remain completely silent during the requested period
 5. Only break the silence if the user specifically asks you to answer or speak
 

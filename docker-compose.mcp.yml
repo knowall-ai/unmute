@@ -1,0 +1,32 @@
+services:
+  backend-mcp:
+    container_name: unmute-backend-mcp
+    image: unmute-backend:latest
+    build:
+      context: ./
+      target: hot-reloading
+    volumes:
+      - ./unmute:/app/unmute
+      - ./.mcp.json:/app/.mcp.json:ro
+      - ./.mcp.local.json:/app/.mcp.local.json:ro
+    environment:
+      - KYUTAI_STT_URL=ws://unmute-stt:8080
+      - KYUTAI_TTS_URL=ws://unmute-tts:8080
+      - KYUTAI_LLM_URL=http://ollama:11434
+      - KYUTAI_LLM_MODEL=llama3.2:3b
+      - NEWSAPI_API_KEY=$NEWSAPI_API_KEY
+    ports:
+      - "8766:80"  # Main backend port (8765) + 1
+    networks:
+      - ai-stack
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+networks:
+  ai-stack:
+    external: true

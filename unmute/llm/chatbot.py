@@ -99,10 +99,10 @@ class Chatbot:
         
         # Preserve MCP tools section if it exists
         current_prompt = self.get_system_prompt()
-        if "# AVAILABLE TOOLS (MCP)" in current_prompt:
+        if "# AVAILABLE TOOLS" in current_prompt:
             # Extract MCP section from current prompt
             import re
-            mcp_match = re.search(r"\n\n# AVAILABLE TOOLS \(MCP\).*?(?=\n\n#|\Z)", current_prompt, re.DOTALL)
+            mcp_match = re.search(r"\n\n# AVAILABLE TOOLS.*?(?=\n\n#|\Z)", current_prompt, re.DOTALL)
             if mcp_match:
                 mcp_section = mcp_match.group(0)
                 # Add MCP section to new prompt before transcription errors section
@@ -133,13 +133,13 @@ class Chatbot:
         current_prompt = self.get_system_prompt()
         
         # Add MCP tools section to the prompt
-        mcp_section = f"\n\n# AVAILABLE TOOLS (MCP)\n{mcp_tools_description}\n\nTo use any of these tools, respond with:\nTOOL_CALL: tool_name(arguments)\n\nFor example:\n- TOOL_CALL: some_tool()\n- TOOL_CALL: another_tool(param=\"value\")\n\nIMPORTANT: Always use the appropriate tool when asked about information that a tool can provide. The tool descriptions above tell you what each tool does."
+        mcp_section = f"\n\n# AVAILABLE TOOLS\n{mcp_tools_description}"
         
         # Check if MCP section already exists and update it
-        if "# AVAILABLE TOOLS (MCP)" in current_prompt:
+        if "# AVAILABLE TOOLS" in current_prompt:
             # Replace existing MCP section
             import re
-            pattern = r"\n\n# AVAILABLE TOOLS \(MCP\).*?(?=\n\n#|\Z)"
+            pattern = r"\n\n# AVAILABLE TOOLS.*?(?=\n\n#|\Z)"
             updated_prompt = re.sub(pattern, mcp_section, current_prompt, flags=re.DOTALL)
         else:
             # Add MCP section before the transcription errors section

@@ -26,6 +26,25 @@ graph LR
   - Once the speech-to-text detects that the user has stopped speaking and it's time to generate a response, the backend connects to an **LLM** server to retrieve the response. We host our own LLM using [VLLM](https://github.com/vllm-project/vllm), but you could also use an external API like OpenAI or Mistral.
   - As the response is being generated, the backend feeds it to the **text-to-speech** server to read it out loud, and forwards the generated speech to the user.
 
+## Key Features
+
+- **Low-latency voice interactions** - Optimized for real-time conversations
+- **Flexible LLM support** - Works with any text LLM (local or API-based)
+- **MCP (Model Context Protocol) integration** - Connect to external tools and data sources
+- **WebRTC support** - High-quality audio streaming
+- **Docker-based deployment** - Easy setup and reproducible environments
+
+### MCP Integration
+
+Unmute supports the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/), allowing your voice assistant to access external tools and data sources. This enables capabilities like:
+
+- Checking the current time and date
+- Accessing file systems
+- Integrating with GitHub, databases, and more
+- Custom tool development
+
+See the [MCP documentation](unmute/mcp/README.md) for configuration details.
+
 ## Setup
 
 > [!NOTE]

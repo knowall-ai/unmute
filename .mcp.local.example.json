@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "weather": {
+      "command": "uvx",
+      "args": ["mcp-server-weather", "--api_key", "YOUR_OPENWEATHER_API_KEY"]
+    }
+  }
+}

@@ -12,7 +12,7 @@ export const useBackendServerUrl = () => {
 
       const backendUrl = new URL("", window.location.href);
       if (!isInDocker) {
-        backendUrl.port = "8000";
+        backendUrl.port = "8766";  // Use MCP backend
       }
       backendUrl.pathname = prefix;
       backendUrl.search = ""; // strip any query parameters
