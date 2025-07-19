@@ -25,3 +25,6 @@ volumes/
 CLAUDE.md
 .claude/settings.local.json
 .mcp.config.local
+
+# Node modules
+node_modules/
